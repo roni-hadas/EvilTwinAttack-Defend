@@ -64,8 +64,12 @@ def create_evil_twin(ssid, iface):
     print("[*] Press Enter when you're ready to stop the beacon and continue...")
     input()
     # TODO Terminate the beacon spoofer
-    spoofer.terminate()
-    print("[+] Beacon spoofer terminated.")
+    try:
+        spoofer.terminate()
+        spoofer.wait()
+        print("[+] Beacon spoofer terminated.")
+    except Exception as e:
+        print(f"[!] Failed to terminate spoofer: {e}")
 
 def send_deauth(victim_mac, ap_mac, iface):
     clear()
