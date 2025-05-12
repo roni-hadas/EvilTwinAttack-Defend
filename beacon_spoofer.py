@@ -18,11 +18,12 @@ CAPTIVEPORTAL_IP = "192.168.24.1"
 def generate_dnsmasq_conf(interface, captive_ip, dhcp_start="192.168.24.50", dhcp_end="192.168.24.250", netmask="255.255.255.0"):
     conf_text = (
         f"bogus-priv\n"
-        f"server=/localnet/{captive_ip}\n"
         f"local=/localnet/\n"
         f"interface={interface}\n"
         f"domain=localnet\n"
         f"dhcp-range={dhcp_start},{dhcp_end},2h\n"
+        f"address=/connectivitycheck.gstatic.com/{captive_ip}\n"
+        f"address=/captive.apple.com/{captive_ip}\n"
         f"address=/#/{captive_ip}\n"
         f"dhcp-option=1,{netmask}\n"
         f"dhcp-option=3,{captive_ip}\n"
@@ -45,10 +46,12 @@ def start_dnsmasq(config_file="dnsmasq.conf"):
     subprocess.Popen(["sudo", "dnsmasq", "-C", config_file])
     print("[+] dnsmasq started using configuration file:", config_file)
 
-def setup_iptables(redirect_port=8080):
+def setup_iptables():
     import os
-    os.system(f"sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port {redirect_port}")
-    print(f"[+] iptables rule set: redirect all HTTP traffic to port {redirect_port}")
+    os.system("sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination 192.168.24.1:80")
+    os.system("sudo iptables -t nat -A PREROUTING -p udp --dport 53 -j DNAT --to-destination 192.168.24.1")
+    os.system("sudo iptables -t nat -A POSTROUTING -j MASQUERADE")
+    print("[+] iptables rules set: HTTP redirected to 80, DNS forced to local, MASQUERADE enabled")
 
 def start_server(script_path="web_server/server.py"):
     import subprocess
@@ -59,7 +62,7 @@ generate_dnsmasq_conf(iface, CAPTIVEPORTAL_IP)
 setup_interface_ip(iface, CAPTIVEPORTAL_IP)
 start_dnsmasq()
 setup_iptables(redirect_port=8080)
-start_server(script_path="server.py")
+start_server(script_path="web_server/server.py")
 
 # Create 802.11 beacon frame
 dot11 = Dot11(type=0, subtype=8,
