@@ -1,6 +1,6 @@
 from scapy.all import *
 
-def find_clients(iface, target_ssid=None, target_bssid=None, timeout=15):
+def find_clients(iface, target_bssid, target_ssid, timeout=15):
     clients = set()
 
     def packet_handler(pkt):
@@ -20,7 +20,7 @@ def find_clients(iface, target_ssid=None, target_bssid=None, timeout=15):
                     mac = pkt.addr2 if pkt.addr2 != target_bssid else pkt.addr1
                     if mac and mac not in clients:
                         clients.add(mac)
-                        print(f"[+] Associated Client Detected: {mac}")
+                        print(f"[+] Associated Client Detected: {mac} on SSID: {target_ssid}")
 
     print(f"[*] Scanning for clients on {iface} (timeout={timeout}s)...")
     sniff(iface=iface, prn=packet_handler, timeout=timeout, store=0)

