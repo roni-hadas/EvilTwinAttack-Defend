@@ -87,7 +87,7 @@ def process_packet(pkt):
 
 if __name__ == "__main__":
     hooper = Thread(target=change_channel, daemon=True)
-    hopper.start()
+    hooper.start()
 
     print(f"Starting Ids on {IFACE}")
     sniffer = AsyncSniffer(iface = IFACE, prn = process_packet)
@@ -98,4 +98,4 @@ if __name__ == "__main__":
             time.sleep(1)
 
     except KeyboardInterrupt:
-        prinst("Stopping...")
+        print("Stopping...")
