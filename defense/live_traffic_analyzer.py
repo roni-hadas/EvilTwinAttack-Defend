@@ -20,7 +20,7 @@ model = joblib.load("trained_rf_model.pkl")
 le = joblib.load("label_encoder.pkl")
 
 # Define the wireless interface in monitor mode
-INTERFACE = "wlan0mon"
+INTERFACE = "wlan"
 
 # Load feature names (excluding the 'Label' column)
 with open("feature_header.txt") as f:
