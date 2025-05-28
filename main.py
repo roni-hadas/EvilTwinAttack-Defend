@@ -44,6 +44,12 @@ def select_interfaces():
     os.system(f"sudo iwconfig {iface_deauth} mode monitor")
     os.system(f"sudo ip link set {iface_deauth} up")
     print(f"[+] {iface_deauth} set to monitor mode.")
+
+    os.system(f"sudo ip link set {iface_ap} down")
+    os.system(f"sudo iwconfig {iface_ap} mode monitor")
+    os.system(f"sudo ip link set {iface_ap} up")
+    print(f"[+] {iface_ap} set to monitor mode.")
+
     return iface_ap, iface_deauth
 
 def cleanup_interface(iface):
