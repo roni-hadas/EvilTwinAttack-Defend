@@ -1,95 +1,71 @@
-# 🕵️‍♂️ Evil Twin Attack Suite
+# 📡 Evil Twin Attack Suite & Defense
 
-Welcome to the **Evil Twin Attack Suite**, a Python-based wireless security toolkit designed for ethical hackers, penetration testers, and cybersecurity students. This project simulates a rogue access point to perform Evil Twin attacks, forcefully deauthenticating victims from legitimate networks and luring them into a maliciously cloned Wi-Fi hotspot.
+## Overview
 
----
-
-## 🚀 Features
-
-- 🌐 **Network Scanner** – Discover nearby Wi-Fi networks with SSID, BSSID, and channel info.
-- 🎯 **Client Detector** – Identify clients probing for or connected to a specific network.
-- 📡 **Evil Twin Beacon Spoofer** – Broadcast a fake access point mimicking a real one using `hostapd`.
-- 🧨 **Deauthentication Attacker** – Continuously send deauth frames to force clients off the real AP.
-- 🌐 **Captive Portal** – Redirect victim’s web traffic to a custom HTML login page using Flask + dnsmasq.
-- 📑 **Modular Design** – Well-structured Python modules, easy to extend or integrate.
+This project includes an **Evil Twin Attack toolkit** (offensive) and two **detection mechanisms** (defensive) — a **Machine Learning-based IDS** and a **Manual Defense Sniffer** — that are designed for educational and authorized penetration testing.
 
 ---
 
-## 📁 Project Structure
+## 🚨 Evil Twin Attack Toolkit
 
-```
-.
-├── main.py                  # Orchestrates the entire Evil Twin attack flow
-├── beacon_spoofer.py       # Launches fake AP with hostapd + captive portal
-├── deauth.py               # Sends spoofed deauth frames using Scapy
-├── network_scanner.py      # Discovers nearby networks via beacon frames
-├── client_scanner.py       # Finds Wi-Fi clients probing or connected
-├── web_server/
-│   └── server.py           # Flask server for the fake login portal
-├── hostapd.conf            # Dynamically generated AP config
-├── dnsmasq.conf            # DHCP and DNS redirection config
-└── README.md               # You're here!
-```
+![Evil Twin Attack Diagram](images/attack_diagram.png)
 
----
 
-## 🛠️ Requirements
-
-- Python 3.x
-- Linux (preferably Kali, Parrot, or DragonOS)
-- Tools:
-  - `hostapd`
-  - `dnsmasq`
-  - `iwconfig`
-  - `iptables`
-- Python Libraries:
-  - `scapy`
-  - `flask`
-
-Install dependencies:
-```bash
-sudo apt update
-sudo apt install hostapd dnsmasq python3-pip
-pip3 install scapy flask
-```
+- **Purpose:** Simulates a rogue access point that mimics a real Wi-Fi network, forcing users to disconnect and reconnect to the attacker's fake AP. The attacker can then capture credentials or manipulate user traffic.
+- **Key Scripts:**
+  - **main.py:** Orchestrates the entire Evil Twin attack flow.
+  - **beacon_spoofer.py:** Uses hostapd to broadcast a fake AP with the same SSID as the legitimate network.
+  - **deauth.py:** Sends deauthentication frames (via Scapy) to disconnect clients from the real AP, forcing them to connect to the fake one.
+  - **client_scanner.py:** Identifies client devices (stations) connected to the real AP, useful for targeting specific victims.
+  - **dnsmasq.conf & hostapd.conf:** Provide DHCP/DNS redirection and Wi-Fi configurations for the fake AP.
+  - **web_server/server.py:** Hosts a captive portal (login page) using Flask, capturing credentials or simulating phishing attacks.
+- **Attack Logic:** The attacker deauthenticates clients from the real AP, then uses a cloned SSID to lure them into connecting to the rogue AP. The captive portal then captures credentials.
 
 ---
 
-## ⚙️ Usage
+## 🔎 Detection Mechanisms
 
-1. Put two Wi-Fi interfaces in place:
-   - One for hosting the Evil Twin AP
-   - One in monitor mode for scanning & deauthing
+### 1️⃣ Machine Learning-Based IDS
 
-2. Run the main orchestrator script:
-```bash
-sudo python3 main.py
-```
+- **Purpose:** Real-time classification of packets using features extracted from live network traffic.
+- **Dataset:** AWID3 dataset ([AWID3](https://icsdweb.aegean.gr/awid/awid3)), preprocessed and labeled with 'Normal', 'Evil_Twin', and 'Deauth' classes.
+- **Feature List:** Includes fields like `wlan.fc.type`, `wlan_radio.data_rate`, `frame.len`, etc., derived from tshark captures. These features represent packet-level statistics.
+- **Script Summary:**
+  - Uses **tshark** to capture packets live and extract features defined in a `feature_header.txt` file.
+  - Applies a **RandomForestClassifier** to classify each packet as Normal, Evil_Twin, or Deauth.
+  - Continuously prints alerts if suspicious activity is detected.
+  - **Logic:** Every line of live capture is parsed, missing values are replaced with zeros, and each row is classified. If the label is not 'Normal', an alert is printed.
 
-3. Follow the prompts to:
-   - Select interfaces
-   - Scan for networks
-   - Choose a target
-   - Launch the fake AP
-   - Start deauth attack
+### 2️⃣ Manual Defense Sniffer
 
----
+- **Purpose:** Uses scapy to sniff Wi-Fi packets in real time and manually identify suspicious APs and deauth attacks.
+- **Script Summary:**
+  - Starts by setting the interface to monitor mode and channel hopping across Wi-Fi channels.
+  - **Deauthentication Detection:**
+    - Counts the number of unprotected deauth/disas frames sent by the real AP or to the user’s device.
+    - If the count exceeds a threshold within a time window, an alert is triggered.
+  - **Evil Twin Detection:**
+    - Monitors beacon frames.
+    - If a beacon has the same SSID as the real AP but a different BSSID, it increments a counter for that BSSID.
+    - After a time window, if a suspicious BSSID appears too many times, an alert is triggered.
+  - **Logic:** Relies on thresholds for suspicious frames and channel hopping to catch APs on all channels.
+  - - **Defense**:
+    - When an Evil Twin is detected, the script can launch a **countermeasure**: it sends deauth packets **back to the Evil Twin AP** using the `send_deauth_to_ap` function (detailed below).
+    - **Logic**:
+      - Uses `scapy` to craft a deauthentication frame with:
+        - `addr1`: the broadcast address (so all clients see it)
+        - `addr2` and `addr3`: the attacker’s Evil Twin BSSID.
+      - Sends this packet multiple times (default 5) to disrupt the fake AP’s connectivity and potentially disconnect its clients.
 
-## 🧪 Example Flow
-
-- Select `wlan0` as AP interface and `wlan1mon` as monitor interface
-- Choose target SSID: `Cafe_FreeWiFi`
-- Select a client MAC from the list of active devices
-- The beacon spoofer launches a fake AP with the same SSID and BSSID
-- Deauth packets flood the victim, forcing reconnection
-- Captive portal appears requesting login credentials
-
----
-
-## ⚠️ Legal Notice
-
-> **This project is for educational and authorized penetration testing only.**
-> Do **NOT** run this attack on networks you do not own or have explicit permission to test.
-> Misuse of this tool can result in criminal charges. You are responsible for your actions.
 
 ---
+
+## 📝 Summary
+
+| Component               | Description |
+|-------------------------|-------------|
+| **Evil Twin Attack Suite** | Offensive toolkit: fake AP (hostapd), deauth frames (Scapy), captive portal (Flask). |
+| **Machine Learning IDS**  | Real-time detection using RandomForest trained on AWID3, using packet features from tshark. |
+| **Manual Defense Sniffer** | Real-time detection using scapy, thresholds, and BSSID/SSID logic, with channel hopping. |
+
+**Note:** For training the ML model, we used the AWID3 dataset: [AWID3](https://icsdweb.aegean.gr/awid/awid3).
