@@ -6,6 +6,13 @@ This project includes an **Evil Twin Attack toolkit** (offensive) and two **dete
 
 ---
 
+## Group Members:
+- Roni Hadas
+- Anthonios Deeb
+- Wasim Sheblany
+
+---
+
 ## 🚨 Evil Twin Attack Toolkit
 
 ![Evil Twin Attack Diagram](images/attack_diagram.png)
@@ -59,6 +66,94 @@ This project includes an **Evil Twin Attack toolkit** (offensive) and two **dete
 
 
 ---
+## 📁 Installation & Setup
+
+**Requirements:**
+- Python 3.x
+- Linux with a wireless adapter supporting monitor mode
+- Tools: `hostapd`, `dnsmasq`, `iwconfig`, `iptables`
+
+**Setup for ML based-detection:**
+```bash
+# Create and activate a virtual environment
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies from requirements.txt
+pip install -r requirements.txt
+
+```
+## 🧪 Usage
+
+###  Evil Twin Attack
+
+This part of the suite simulates an Evil Twin attack by selecting an interface, scanning for nearby networks, selecting a victim network and client, then launching the attack.
+
+**Step-by-step guide:**
+
+1. **Interface Selection**
+   - Puts your wireless adapter into monitor mode.
+   - Example:
+     ```bash
+     python3 main.py
+     ```
+   - Prompts:
+     - "Enter your wireless interface (e.g., wlxc83a35c2fcb0):"
+
+2. **Network Scan**
+   - Scans for nearby Wi-Fi networks.
+   - Prompts:
+     - Lists all discovered SSIDs, BSSIDs, and channels.
+     - Choose a target network to spoof.
+
+3. **Client Detection**
+   - Identifies devices probing or connected to the chosen network.
+   - Prompts:
+     - Lists discovered clients (MAC addresses).
+     - Select a client to deauth.
+
+4. **Evil Twin Deployment**
+   - Launches the beacon spoofer that creates a fake AP with the same SSID.
+   - Example:
+     - Starts `beacon_spoofer.py` in the background.
+     - Prompts you to press Enter to continue when ready.
+
+5. **Deauth Attack**
+   - Sends deauthentication packets to forcibly disconnect the victim from the real AP.
+   - Example:
+     - Uses the victim's MAC and real AP MAC.
+
+6. **Cleanup**
+   - Reverts the interface back to managed mode and cleans up processes.
+
+---
+
+### Machine Learning Defense
+
+Monitors network traffic in real time and classifies packets using a trained Random Forest model based on AWID3 dataset. 
+
+- **Start the ML-based defense:**
+  ```bash
+  sudo python3 ml_defense.py
+  
+---
+### Manual Defense
+
+Another IDS classifier works by manually analyzing each sniffed packet using 'scapy'
+
+- **Start the Manual IDS defense:**
+  ```bash
+  sudo python3 manual_defense.py
+  ```
+ --- 
+### ⚠️ Limitations
+
+- **Machine Learning Classifier:** Currently, the machine learning-based IDS script only performs detection; it lacks a built-in defensive countermeasure mechanism. However, the manual defense script does implement active defense measures like deauth counterattacks.
+- **Data Imbalance:** The training dataset (AWID3) used for building the model is imbalanced, containing significantly more normal samples than attack samples. This may affect the model’s ability to generalize to unseen attacks in real-world environments.
+- **Dataset Scope:** The classifier was trained on publicly available datasets only and may not fully capture all variations of real-world Evil Twin attacks or other emerging threats.
+- **Environmental Noise:** In highly congested Wi-Fi environments, legitimate networks might produce noisy traffic that could increase false positives and impact detection accuracy.
+- **Monitor Mode Requirement:** Both detection and defense scripts rely on monitor mode, which may not be supported by all wireless cards and can disrupt normal connectivity on the device running the script.
+
 
 ## 📝 Summary
 
